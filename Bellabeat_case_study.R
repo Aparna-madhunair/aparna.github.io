@@ -1,0 +1,185 @@
+# Install necessary packages.
+
+install.packages("tidyverse")
+library("tidyverse")
+
+install.packages("dplyr")
+library("dplyr")
+
+install.packages("tidyr")
+library("tidyr")
+
+install.packages("lubridate")
+library(lubridate)
+
+install.packages("ggplot2")
+library(ggplot2)
+
+install.packages("magrittr")
+library(magrittr)
+
+# Import the data sets for analysis.
+
+setwd("C:/Users/HP/Desktop/GDA/Case study/Fitabase Data 4.12.16-5.12.16")
+activity_log<- read.csv("dailyActivity_merged.csv")
+sleep_log<- read.csv("sleepDay_merged.csv")
+met_log<- read.csv("minuteMETsNarrow_merged.csv")
+hourly_calories<- read.csv("hourlyCalories_merged.csv")
+hourly_intensity<- read.csv("hourlyIntensities_merged.csv")
+hourly_steps<-read.csv("hourlySteps_merged.csv")
+
+# Glimpse of the data.
+
+glimpse(activity_log)
+glimpse(sleep_log)
+glimpse(met_log)
+glimpse(hourly_calories)
+glimpse(hourly_intensity)
+glimpse(hourly_steps)
+
+# Check for NA values.
+
+sum(is.na(activity_log))
+sum(is.na(hourly_calories))
+sum(is.na(hourly_intensity))
+sum(is.na(hourly_steps))
+sum(is.na(met_log))
+sum(is.na(sleep_log))
+
+# Check for duplicate values. 
+
+sum(duplicated(activity_log))
+sum(duplicated(hourly_calories))
+sum(duplicated(hourly_intensity))
+sum(duplicated(hourly_steps))
+sum(duplicated(met_log))
+sum(duplicated(sleep_log))
+
+# Remove the duplicated values.
+
+sleep_log<-sleep_log[!duplicated(sleep_log),]
+
+# Check the data type of each column in the data Sets.
+
+str(activity_log)
+str(sleep_log)
+str(met_log)
+str(hourly_calories)
+str(hourly_intensity)
+str(hourly_steps)
+
+# All the date fields are in chr.Convert it into datetime.
+
+mdy<-mdy(activity_log$ActivityDate)
+activity_log$ActivityDate<-mdy
+
+mdy_hms<-mdy_hms(sleep_log$SleepDay)
+sleep_log$SleepDay<-mdy_hms
+
+met_log$ActivityMinute<-parse_date_time(met_log$ActivityMinute,'%m/%d/%Y %I:%M:%S %p')
+hourly_intensity$ActivityHour<-parse_date_time(hourly_intensity$ActivityHour,'%m/%d/%Y %I:%M:%S %p')
+hourly_calories$ActivityHour<-parse_date_time(hourly_calories$ActivityHour,'%m/%d/%Y %I:%M:%S %p')
+hourly_steps$ActivityHour<-parse_date_time(hourly_steps$ActivityHour,'%m/%d/%Y %I:%M:%S %p')
+
+
+# Converting date-time column into two separate columns. 
+
+met_log<-tidyr::separate(met_log,ActivityMinute,c("Date","Time"),sep=" ")
+
+# Calculate the total met value on daily basis.
+
+met_log_daily<-met_log %>%
+    group_by(Id,Date)%>%
+  summarise(Total_Met=sum(METs ,na.rm = TRUE))
+
+# To work with data better we add one new column 'Day'.
+
+activity_log <- activity_log %>% mutate( Day = weekdays(as.Date(ActivityDate, "%m/%d/%Y")))
+
+# Columns to identify the time(in minutes and hours) for which the device was worn.
+
+activity_log$Worn_min<-activity_log$VeryActiveMinutes+activity_log$FairlyActiveMinutes+activity_log$LightlyActiveMinutes+activity_log$SedentaryMinutes
+activity_log$Worn_hour<-activity_log$Worn_min/60
+activity_log$worn_all_day<-activity_log$Worn_hour==24
+
+worn_day<-count(activity_log,worn_all_day)%>%
+  rename(Count=n)
+
+# Summary of the data to see their minimum, maximum and average values.
+
+activity_log %>%
+  select(TotalSteps,TotalDistance,Calories,Worn_hour,VeryActiveDistance,VeryActiveMinutes,LightActiveDistance,LightlyActiveMinutes,ModeratelyActiveDistance,
+         SedentaryActiveDistance,SedentaryMinutes,FairlyActiveMinutes) %>%
+  summary()
+sleep_log %>%
+  select(TotalMinutesAsleep,TotalTimeInBed)%>%
+  summary()
+met_log_daily%>%
+  summary(Total_Met)
+
+# Sedentary minutes vs weekday.
+
+ggplot(activity_log,aes(x=Day,y=SedentaryMinutes,fill=Day))+
+  geom_bar(stat = "identity",fill="#B87333")+
+  labs(title="Sedantary minutes for day of the week",x="day of the week",y="Sedantary minutes",caption="940 observations")
+
+# Calorie vs Step taken
+
+ggplot(activity_log,aes(y=Calories,x=TotalSteps))+geom_point()+
+  geom_smooth()+
+  labs(title="Calories burnt for the steps taken",x="Steps taken on a day",y="Calories burnt",caption="940 Observations")
+
+# Calorie vs Distance
+
+ggplot(activity_log,aes(x=TotalDistance,y=Calories))+geom_point()+geom_smooth()+
+  labs(title="Calories burnt Vs the Distance covered",x="Distance covered in a day",y="Calories burnt",caption="940 Observations")
+
+# Minutes asleep vs Total time in bed
+
+ggplot(sleep_log,aes(x=TotalMinutesAsleep,y=TotalTimeInBed))+geom_point()+geom_smooth()+
+  labs(title = "Time spent sleeping Vs Time spent on bed",x="Minutes asleep",y="Time spent on bed",caption="410 Observations")
+
+# Distance vs Day of the week
+
+activity_log$Day<-factor(activity_log$Day,levels =c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday") )
+ggplot(activity_log,aes(x=Day,y=TotalDistance,fill=Day))+geom_bar(stat = "identity",fill="#00FFFF")+
+  labs(title="Distance overed in a day",x="Day of the week",y="Distance covered",caption="940 Observations")
+
+
+# How many people wore the device for the whole day.?
+
+ggplot(worn_day)+
+  geom_col(mapping=aes(x=worn_all_day ,y=Count, fill=worn_all_day))+
+  geom_text(mapping=aes(x=worn_all_day ,y=Count , label=Count),position = position_stack(vjust = 0.9))+
+  labs(title = "Was the device worn all day.?",caption = "940 observations")+
+  xlab("Trackers worn all day")+
+  ylab("Count")
+
+# Hours for which the device was worn on each day of the week.?
+
+hours_per_day <- activity_log[c("Id","ActivityDate","Day","Worn_hour")]
+hours_per_day$Day<-factor(hours_per_day$Day, levels = c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))
+
+ggplot(hours_per_day,aes(x=Day,y=Worn_hour,group=1))+
+ geom_point(alpha=1/10)+
+  geom_smooth(color="#00008B")+
+  labs(title="Hours worn per day of the week",x="Day of the week",y="Hours",caption = "940 Observations")
+  
+# How many people wore on all days of the week.?
+
+wore_all_day<-activity_log[c("Day","worn_all_day")] %>%
+  count(Day,worn_all_day)
+wore_all_day$Day<-factor(wore_all_day$Day,levels =c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday") )
+
+ggplot(wore_all_day,aes(fill=worn_all_day,x=Day,y=n,))+
+  geom_bar(position = "stack",stat="identity")+
+  geom_text(mapping = aes(x=Day,y=n,label=n),position=position_stack(vjust = 0.5))+
+  labs(title="Number of people who wore the device for the whole day of the week",
+       x="Day of the week",
+       y="Count of the participants",
+       caption="940 Observations")
+
+
+
+
+
